@@ -16,4 +16,4 @@ spec:
       containers:
         - name: scheduler
           image: custom-scheduler:latest
-          imagePullPolicy: Always
+          imagePullPolicy: Never
