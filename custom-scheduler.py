@@ -8,23 +8,24 @@ import requests
 
 timestamp_format = "%Y-%m-%d %H:%M:%S"
 scheduler_name = "my-scheduler"
-prometheus_url = "http://prometheus-server.default.svc.cluster.local:9090"
+prometheus_url = "http://prometheus-server.default.svc.cluster.local:80"
 
-# Use load_incluster_config when deploying scheduler from within the cluster. Otherwise use load_kube_config
+# Use load_incluster_config when deploying scheduler from within the cluster.
+# Otherwise use load_kube_config
 config.load_incluster_config()
 v1 = client.CoreV1Api()
 
 def get_timestamp():
-  return strftime(timestamp_format, localtime())
+    return strftime(timestamp_format, localtime())
 
 def query_prometheus(query):
-  try:
-    r = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query})
-    print(f"Resp: {r.json()}")
-    return r.json().get("data", {}).get("result", [])
-  except Exception as e:
-    print(f"Custom-Scheduler: Error querying Prometheus: {e}")
-    return []
+    try:
+        r = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query})
+        print(f"Resp: {r.json()}")
+        return r.json().get("data", {}).get("result", [])
+    except Exception as e:
+        print(f"Custom-Scheduler: Error querying Prometheus: {e}")
+        return []
 
 def get_timestamp():
     return strftime(timestamp_format, localtime())
@@ -32,7 +33,8 @@ def get_timestamp():
 def nodes_available():
     ready_nodes = []
     for n in v1.list_node().items:
-        # This loops over the nodes available. n is the node. We are trying to schedule the pod on one of those nodes.
+        # This loops over the nodes available. n is the node. We are trying
+        # to schedule the pod on one of those nodes.
         for status in n.status.conditions:
             if status.status == "True" and status.type == "Ready":
                 ready_nodes.append(n.metadata.name)
@@ -56,12 +58,16 @@ def main():
     print("Custom-Scheduler: {}: Starting custom scheduler...".format(get_timestamp()))
     w = watch.Watch()
     for event in w.stream(v1.list_namespaced_pod, "default"):
+        pod = event["object"]
         # We get an "event" whenever a pod needs to be scheduled
-        # and event['object'].spec.scheduler_name == scheduler_name:
-        if event['object'].status.phase == "Pending" and event['object'].spec.scheduler_name == scheduler_name:
+        # and pod.spec.scheduler_name == scheduler_name:
+        
+        if pod.status.phase == "Pending" and\
+            pod.spec.scheduler_name == scheduler_name and\
+            pod.spec.node_name is None:
             try:
-                print(event['object'].metadata.__dict__)
-                pod_name = event['object'].metadata.name
+                # print(pod.metadata.__dict__)
+                pod_name = pod.metadata.name
                 print("...")
                 prometheus_data = query_prometheus('100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[30m])) * 100)')
                 print("...")

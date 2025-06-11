@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: test-pod
 spec:
-  schedulerName: custom-scheduler
+  schedulerName: my-scheduler
   containers:
   - name: busybox
     image: busybox

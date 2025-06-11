@@ -21,6 +21,6 @@ spec:
     spec:
       serviceAccountName: my-scheduler
       containers:
-      - image: my-scheduler:latest
-        name: my-scheduler
+      - name: my-scheduler
+        image: my-scheduler:latest
         imagePullPolicy: IfNotPresent
