@@ -1,10 +1,16 @@
 #!/usr/bin/env python
 
-import random
 import json
-from time import localtime, strftime
 from kubernetes import client, config, watch
+import numpy as np
+import random
 import requests
+import random
+import string
+import threading
+from time import localtime, sleep, strftime
+import torch
+import torch.nn as nn
 
 NUM_FEATURES = 10
 SEQ_LENGTH = 5
@@ -99,7 +105,7 @@ def model_updater():
                 loss = criterion(output, y)
                 loss.backward()
                 optimizer.step()
-        time.sleep(UPDATE_INTERVAL)
+        sleep(UPDATE_INTERVAL)
 
 def predict_node():
     with lock:
@@ -150,4 +156,6 @@ def main():
 
 
 if __name__ == '__main__':
+    update_thread = threading.Thread(target=model_updater, daemon=True)
+    update_thread.start()
     main()
