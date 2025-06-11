@@ -21,6 +21,6 @@ spec:
     spec:
       serviceAccountName: my-scheduler
       containers:
-      - image: docker.io/library/my-container:latest
+      - image: my-container:latest
         name: my-scheduler
         imagePullPolicy: IfNotPresent

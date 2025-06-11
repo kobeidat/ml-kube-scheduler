@@ -48,7 +48,7 @@ def query_prometheus(query):
     return []
 
 def query_prometheus_cpu():
-    return query_prometheus('100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[30m])) * 100)')
+    return query_prometheus('100 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])) * 100)')
 
 def nodes_available():
     ready_nodes = []
@@ -120,7 +120,7 @@ def predict_node():
             preds = np.array(preds).squeeze()
             avg_preds = preds.mean(axis=0)
             min_idx = np.argmin(avg_preds)
-            node = reverse_feature_map.get(min_idx)
+            node = reverse_feature_map.get(min_idx % len(reverse_feature_map))
             print(f"Custom-Scheduler: {get_timestamp()}: Lowest projected average feature: {node} (index {min_idx}) -> {avg_preds[min_idx]:.3f}")
             return node
 
