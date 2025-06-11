@@ -5,7 +5,7 @@ metadata:
     component: scheduler
     tier: control-plane
   name: my-scheduler
-  namespace: kube-system
+  namespace: default
 spec:
   selector:
     matchLabels:
@@ -21,6 +21,6 @@ spec:
     spec:
       serviceAccountName: my-scheduler
       containers:
-      - image: my-scheduler:latest
+      - image: docker.io/library/my-container:latest
         name: my-scheduler
         imagePullPolicy: IfNotPresent

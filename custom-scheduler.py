@@ -15,7 +15,7 @@ import torch.nn as nn
 NUM_FEATURES = 10
 SEQ_LENGTH = 5
 PREDICT_HORIZON = 3
-UPDATE_INTERVAL = 60
+UPDATE_INTERVAL = 5
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 SCHEDULER_NAME = "my-scheduler"
 PROMETHEUS_URL = "http://prometheus-server.default.svc.cluster.local"
@@ -70,7 +70,7 @@ def get_data():
     nodes_list = list(set(nodes_available()))
     cpu_data = query_prometheus_cpu()
     return {
-        nodes_list[i]: float(cpu_usage[i]['value'][1])
+        nodes_list[i]: float(cpu_data[i]['value'][1])
         for i in range(len(nodes_list))
     }
 
@@ -105,6 +105,7 @@ def model_updater():
                 loss = criterion(output, y)
                 loss.backward()
                 optimizer.step()
+        print(f"Custom-Scheduler: input history: {input_history}")
         sleep(UPDATE_INTERVAL)
 
 def predict_node():
