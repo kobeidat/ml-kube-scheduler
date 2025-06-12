@@ -44,19 +44,21 @@ class LSTMModel(nn.Module):
         x = self.fc(x)
         return x[:, -1, :]
 
+# Use load_incluster_config when deploying scheduler from within the cluster.
+# Otherwise use load_kube_config
 config.load_incluster_config()
 v1 = client.CoreV1Api()
 
 def get_timestamp():
-  return strftime(TIMESTAMP_FORMAT, localtime())
+    return strftime(timestamp_format, localtime())
 
 def query_prometheus(query):
-  try:
-    r = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
-    return r.json().get("data", {}).get("result", [])
-  except Exception as e:
-    p(f"Error querying Prometheus: {e}")
-    return []
+    try:
+        r = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
+        return r.json().get("data", {}).get("result", [])
+    except Exception as e:
+        p(f"Error querying Prometheus: {e}")
+        return []
 
 def query_prometheus_cpu():
     return query_prometheus("""
@@ -82,6 +84,8 @@ def query_prometheus_mem():
 def nodes_available():
     ready_nodes = []
     for n in v1.list_node().items:
+        # This loops over the nodes available. n is the node. We are trying
+        # to schedule the pod on one of those nodes.
         for status in n.status.conditions:
             if status.status == "True" and status.type == "Ready":
                 ready_nodes.append(n.metadata.name)
