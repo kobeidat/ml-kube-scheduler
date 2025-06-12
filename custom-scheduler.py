@@ -19,6 +19,7 @@ UPDATE_INTERVAL = 5
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 SCHEDULER_NAME = "my-scheduler"
 PROMETHEUS_URL = "http://prometheus-server.default.svc.cluster.local"
+VALUE_MAX = 1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -29,9 +30,9 @@ class LSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_size, input_size)
 
     def forward(self, x):
-        out, _ = self.lstm(x)
-        out = self.fc(out[:, -1, :])
-        return out
+        x, _ = self.lstm(x)
+        x = self.fc(x)
+        return x[:, -1, :]
 
 config.load_incluster_config()
 v1 = client.CoreV1Api()
@@ -48,7 +49,7 @@ def query_prometheus(query):
     return []
 
 def query_prometheus_cpu():
-    return query_prometheus('100 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])) * 100)')
+    return query_prometheus('1 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])))')
 
 def nodes_available():
     ready_nodes = []
@@ -83,7 +84,7 @@ def assign_features(data):
                 feature_map[k] = f_idx
                 reverse_feature_map[f_idx] = k
 
-    input_vector = [0.0] * NUM_FEATURES
+    input_vector = [VALUE_MAX] * NUM_FEATURES
     for k, v in data.items():
         if k in feature_map:
             input_vector[feature_map[k]] = v
@@ -95,34 +96,30 @@ def model_updater():
         data = get_data()
         with lock:
             input_vector = assign_features(data)
-            input_history.append(input_vector)
             if len(input_history) > SEQ_LENGTH:
                 input_history = input_history[-SEQ_LENGTH:]
-                X = torch.tensor([input_history[:-1]], dtype=torch.float32).to(device)
-                y = torch.tensor([input_history[-1]], dtype=torch.float32).to(device)
+                X = torch.tensor([input_history], dtype=torch.float32).to(device)
+                y = torch.tensor([input_vector], dtype=torch.float32).to(device)
                 optimizer.zero_grad()
-                output = model(X)
-                loss = criterion(output, y)
+                loss = criterion(model(X), y)
                 loss.backward()
                 optimizer.step()
-        print(f"Custom-Scheduler: input history: {input_history}")
+            input_history.append(input_vector)
+        print(f"Custom-Scheduler: input vector: {input_vector}")
         sleep(UPDATE_INTERVAL)
 
 def predict_node():
     with lock:
-        if len(input_history) >= SEQ_LENGTH:
-            X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32).to(device)
-            preds = []
-            for _ in range(PREDICT_HORIZON):
-                output = model(X)
-                preds.append(output.detach().cpu().numpy())
-                X = torch.cat([X[:, 1:, :], output.unsqueeze(1)], dim=1)
-            preds = np.array(preds).squeeze()
-            avg_preds = preds.mean(axis=0)
-            min_idx = np.argmin(avg_preds)
-            node = reverse_feature_map.get(min_idx % len(reverse_feature_map))
-            print(f"Custom-Scheduler: {get_timestamp()}: Lowest projected average feature: {node} (index {min_idx}) -> {avg_preds[min_idx]:.3f}")
-            return node
+        while len(input_history) < SEQ_LENGTH:
+            print("Custom-Scheduler: Waiting for the inputs to gather...")
+            sleep(UPDATE_INTERVAL)
+        X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32).to(device)
+        pred = model(X).detach().cpu().numpy().squeeze()
+        min_idx = np.argmin(pred)
+        print(f"Custom-Scheduler: pred {pred}")
+        node = reverse_feature_map.get(min_idx)
+        print(f"Custom-Scheduler: {get_timestamp()}: Lowest projected average feature: {node} (index {min_idx}) -> {pred[min_idx]:.3f}")
+        return node
 
 def scheduler(pod_name, node, namespace="default"):
     target = client.V1ObjectReference()
