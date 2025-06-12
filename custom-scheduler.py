@@ -1,14 +1,48 @@
 #!/usr/bin/env python
 
-import random
 import json
-from time import localtime, strftime
 from kubernetes import client, config, watch
+import numpy as np
+import random
 import requests
+import random
+import string
+import threading
+from time import localtime, sleep, strftime
+import torch
+import torch.nn as nn
 
-timestamp_format = "%Y-%m-%d %H:%M:%S"
-scheduler_name = "my-scheduler"
-prometheus_url = "http://prometheus-server.default.svc.cluster.local:80"
+def p(msg):
+    print(f"Custom-Scheduler {get_timestamp()}: {msg}")
+
+MAX_NODES = 5
+NUM_FEATURES = MAX_NODES * 2
+SEQ_LENGTH = 5
+PREDICT_HORIZON = 3
+UPDATE_INTERVAL = 5
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+SCHEDULER_NAME = "my-scheduler"
+PROMETHEUS_URL = "http://prometheus-server.default.svc.cluster.local"
+VALUE_MAX = 1
+DEFAULT_ALPHA = 0.7
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class LSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size=50, num_layers=1):
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True
+        )
+        self.fc = nn.Linear(hidden_size, input_size)
+
+    def forward(self, x):
+        x, _ = self.lstm(x)
+        x = self.fc(x)
+        return x[:, -1, :]
 
 # Use load_incluster_config when deploying scheduler from within the cluster.
 # Otherwise use load_kube_config
@@ -20,15 +54,32 @@ def get_timestamp():
 
 def query_prometheus(query):
     try:
-        r = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query})
-        print(f"Resp: {r.json()}")
+        r = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
         return r.json().get("data", {}).get("result", [])
     except Exception as e:
-        print(f"Custom-Scheduler: Error querying Prometheus: {e}")
+        p(f"Error querying Prometheus: {e}")
         return []
 
-def get_timestamp():
-    return strftime(timestamp_format, localtime())
+def query_prometheus_cpu():
+    return query_prometheus("""
+                            1 - (
+                                avg by (node) (
+                                    irate(
+                                        node_cpu_seconds_total{
+                                            mode="idle"
+                                        }[30m]
+                                    )
+                                )
+                            )
+                            """)
+
+def query_prometheus_mem():
+    return query_prometheus("""
+                            1 - (
+                                node_memory_MemAvailable_bytes
+                                / node_memory_MemTotal_bytes
+                            )
+                            """)
 
 def nodes_available():
     ready_nodes = []
@@ -40,8 +91,85 @@ def nodes_available():
                 ready_nodes.append(n.metadata.name)
     return ready_nodes
 
+node_id_map = {}
+reverse_node_id_map = {}
+input_history = []
+model = LSTMModel(NUM_FEATURES).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+criterion = nn.MSELoss()
+lock = threading.Lock()
 
-# You can use "default" as a namespace.
+def get_data():
+    nodes_list = list(set(nodes_available()))
+    cpu_data = query_prometheus_cpu()
+    mem_data = query_prometheus_mem()
+    return {
+        nodes_list[i]: [
+            float(cpu_data[i]['value'][1]), 
+            float(mem_data[i]['value'][1])
+        ]
+        for i in range(len(nodes_list))
+    }
+
+def assign_features(data):
+    for k in data.keys():
+        if k not in node_id_map:
+            all_nodes = set(range(MAX_NODES))
+            used_nodes = set(reverse_node_id_map.keys())
+            available_nodes = all_nodes - used_nodes
+            if available_nodes:
+                idx = available_nodes.pop()
+                node_id_map[k] = idx
+                reverse_node_id_map[idx] = k
+
+    input_vector = [VALUE_MAX for _ in range(NUM_FEATURES)]
+    for k, vs in data.items():
+        if k in node_id_map:
+            input_vector[node_id_map[k]] = vs[0]
+            input_vector[MAX_NODES + node_id_map[k]] = vs[1]
+    return input_vector
+
+def model_updater():
+    global input_history
+    while True:
+        data = get_data()
+        with lock:
+            input_vector = assign_features(data)
+            if len(input_history) > SEQ_LENGTH:
+                input_history = input_history[-SEQ_LENGTH:]
+                X = torch.tensor([input_history], dtype=torch.float32) \
+                         .to(device)
+                y = torch.tensor([input_vector], dtype=torch.float32) \
+                         .to(device)
+                optimizer.zero_grad()
+                loss = criterion(model(X), y)
+                loss.backward()
+                optimizer.step()
+            input_history.append(input_vector)
+        sleep(UPDATE_INTERVAL)
+
+def predict_node(alpha):
+    with lock:
+        while len(input_history) < SEQ_LENGTH:
+            p("Waiting for the inputs to gather...")
+            sleep(UPDATE_INTERVAL)
+        X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32) \
+                 .to(device)
+        pred_vector = model(X).detach().cpu().numpy().squeeze()
+        pred_cpu = pred_vector[:MAX_NODES]
+        pred_mem = pred_vector[MAX_NODES:]
+        scores = alpha * pred_cpu + (1 - alpha) * pred_mem
+        min_idx = np.argmin(scores)
+        p(f"pred {pred_vector}")
+        p(f"scores {scores}")
+        node = reverse_node_id_map.get(min_idx)
+        p(f"Lowest projected average feature: {node} "
+            + f"(index {min_idx}) -> "
+            + f"{scores[min_idx]:.3f} ("
+            + f"cpu: {pred_cpu[min_idx]:.3f}, "
+            + f"mem: {pred_mem[min_idx]:.3f})")
+        return node
+
 def scheduler(pod_name, node, namespace="default"):
     target = client.V1ObjectReference()
     target.kind = "Node"
@@ -51,38 +179,45 @@ def scheduler(pod_name, node, namespace="default"):
     meta.name = pod_name
     body = client.V1Binding(target=target)
     body.metadata = meta
-    return v1.create_namespaced_binding(namespace, body, _preload_content=False)
-
+    return v1.create_namespaced_binding(
+        namespace,
+        body,
+        _preload_content=False
+    )
 
 def main():
-    print("Custom-Scheduler: {}: Starting custom scheduler...".format(get_timestamp()))
+    p("Starting custom scheduler...")
     w = watch.Watch()
+
     for event in w.stream(v1.list_namespaced_pod, "default"):
-        pod = event["object"]
-        # We get an "event" whenever a pod needs to be scheduled
-        # and pod.spec.scheduler_name == scheduler_name:
-        
-        if pod.status.phase == "Pending" and\
-            pod.spec.scheduler_name == scheduler_name and\
-            pod.spec.node_name is None:
+        pending = event['object'].status.phase == "Pending"
+        this_scheduler = event['object'].spec.scheduler_name == SCHEDULER_NAME
+        existing_node_name = event['object'].spec.node_name
+        if pending and this_scheduler:
+            if existing_node_name:
+                p(f"Pod already bound to {existing_node_name}")
+                continue
             try:
-                # print(pod.metadata.__dict__)
-                pod_name = pod.metadata.name
-                print("...")
-                prometheus_data = query_prometheus('100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[30m])) * 100)')
-                print("...")
-                print(f"Custom-Scheduler: Prometheus data: {prometheus_data}")
-                print("...")
-                nodes_list = list(set(nodes_available()))
-                print("...")
-                print(f"Custom-Scheduler: Nodes: {nodes_list}")
-                random_node = random.choice(nodes_list)
-                res = scheduler(pod_name, random_node)
-                print("Custom-Scheduler: {}: Scheduling result: {}".format(get_timestamp(), res.status))
-                print("Custom-Scheduler: {}: Scheduled {} to {}".format(get_timestamp(), pod_name, random_node))
+                annotations = event['object'].metadata.annotations or {}
+                alpha_str = annotations.get(
+                    f'{SCHEDULER_NAME}/alpha',
+                    str(DEFAULT_ALPHA)
+                )
+                alpha = float(alpha_str) or DEFAULT_ALPHA
+                p(f"Alpha: {alpha}")
+                pod_name = event['object'].metadata.name
+                p(f"Pod: {pod_name}")
+                data = get_data()
+                p(f"data: {data}")
+                node = predict_node(alpha) or random.choice(nodes_available())
+                res = scheduler(pod_name, node)
+                p(f"Scheduling result: {res.status}")
+                p(f"Scheduled {pod_name} to {node}")
             except client.rest.ApiException as e:
-                print("Custom-Scheduler: {}: An exception occurred: {}".format(get_timestamp(), json.loads(e.body)['message']))
+                p("An exception occurred: {json.loads(e.body)['message']}")
 
 
 if __name__ == '__main__':
+    update_thread = threading.Thread(target=model_updater, daemon=True)
+    update_thread.start()
     main()
