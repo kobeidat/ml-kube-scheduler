@@ -12,7 +12,11 @@ from time import localtime, sleep, strftime
 import torch
 import torch.nn as nn
 
-NUM_FEATURES = 10
+def p(msg):
+    print(f"Custom-Scheduler {get_timestamp()}: {msg}")
+
+MAX_NODES = 5
+NUM_FEATURES = MAX_NODES * 2
 SEQ_LENGTH = 5
 PREDICT_HORIZON = 3
 UPDATE_INTERVAL = 5
@@ -26,7 +30,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size=50, num_layers=1):
         super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True
+        )
         self.fc = nn.Linear(hidden_size, input_size)
 
     def forward(self, x):
@@ -45,11 +54,29 @@ def query_prometheus(query):
     r = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
     return r.json().get("data", {}).get("result", [])
   except Exception as e:
-    print(f"Custom-Scheduler: Error querying Prometheus: {e}")
+    p(f"Error querying Prometheus: {e}")
     return []
 
 def query_prometheus_cpu():
-    return query_prometheus('1 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])))')
+    return query_prometheus("""
+                            1 - (
+                                avg by (node) (
+                                    irate(
+                                        node_cpu_seconds_total{
+                                            mode="idle"
+                                        }[30m]
+                                    )
+                                )
+                            )
+                            """)
+
+def query_prometheus_mem():
+    return query_prometheus("""
+                            1 - (
+                                node_memory_MemAvailable_bytes
+                                / node_memory_MemTotal_bytes
+                            )
+                            """)
 
 def nodes_available():
     ready_nodes = []
@@ -59,8 +86,8 @@ def nodes_available():
                 ready_nodes.append(n.metadata.name)
     return ready_nodes
 
-feature_map = {}
-reverse_feature_map = {}
+node_id_map = {}
+reverse_node_id_map = {}
 input_history = []
 model = LSTMModel(NUM_FEATURES).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -70,24 +97,31 @@ lock = threading.Lock()
 def get_data():
     nodes_list = list(set(nodes_available()))
     cpu_data = query_prometheus_cpu()
+    mem_data = query_prometheus_mem()
     return {
-        nodes_list[i]: float(cpu_data[i]['value'][1])
+        nodes_list[i]: [
+            float(cpu_data[i]['value'][1]), 
+            float(mem_data[i]['value'][1])
+        ]
         for i in range(len(nodes_list))
     }
 
 def assign_features(data):
     for k in data.keys():
-        if k not in feature_map:
-            available_features = set(range(NUM_FEATURES)) - set(reverse_feature_map.keys())
-            if available_features:
-                f_idx = available_features.pop()
-                feature_map[k] = f_idx
-                reverse_feature_map[f_idx] = k
+        if k not in node_id_map:
+            all_nodes = set(range(MAX_NODES))
+            used_nodes = set(reverse_node_id_map.keys())
+            available_nodes = all_nodes - used_nodes
+            if available_nodes:
+                idx = available_nodes.pop()
+                node_id_map[k] = idx
+                reverse_node_id_map[idx] = k
 
-    input_vector = [VALUE_MAX] * NUM_FEATURES
-    for k, v in data.items():
-        if k in feature_map:
-            input_vector[feature_map[k]] = v
+    input_vector = [VALUE_MAX for _ in range(NUM_FEATURES)]
+    for k, vs in data.items():
+        if k in node_id_map:
+            input_vector[node_id_map[k]] = vs[0]
+            input_vector[MAX_NODES + node_id_map[k]] = vs[1]
     return input_vector
 
 def model_updater():
@@ -98,8 +132,10 @@ def model_updater():
             input_vector = assign_features(data)
             if len(input_history) > SEQ_LENGTH:
                 input_history = input_history[-SEQ_LENGTH:]
-                X = torch.tensor([input_history], dtype=torch.float32).to(device)
-                y = torch.tensor([input_vector], dtype=torch.float32).to(device)
+                X = torch.tensor([input_history], dtype=torch.float32) \
+                         .to(device)
+                y = torch.tensor([input_vector], dtype=torch.float32) \
+                         .to(device)
                 optimizer.zero_grad()
                 loss = criterion(model(X), y)
                 loss.backward()
@@ -110,14 +146,24 @@ def model_updater():
 def predict_node():
     with lock:
         while len(input_history) < SEQ_LENGTH:
-            print("Custom-Scheduler: Waiting for the inputs to gather...")
+            p("Waiting for the inputs to gather...")
             sleep(UPDATE_INTERVAL)
-        X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32).to(device)
-        pred = model(X).detach().cpu().numpy().squeeze()
-        min_idx = np.argmin(pred)
-        print(f"Custom-Scheduler: pred {pred}")
-        node = reverse_feature_map.get(min_idx)
-        print(f"Custom-Scheduler: {get_timestamp()}: Lowest projected average feature: {node} (index {min_idx}) -> {pred[min_idx]:.3f}")
+        X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32) \
+                 .to(device)
+        pred_vector = model(X).detach().cpu().numpy().squeeze()
+        pred_cpu = pred_vector[:MAX_NODES]
+        pred_mem = pred_vector[MAX_NODES:]
+        alpha = 0.7
+        scores = alpha * pred_cpu + (1 - alpha) * pred_mem
+        min_idx = np.argmin(scores)
+        p(f"pred {pred_vector}")
+        p(f"scores {scores}")
+        node = reverse_node_id_map.get(min_idx)
+        p(f"Lowest projected average feature: {node} "
+            + f"(index {min_idx}) -> "
+            + f"{scores[min_idx]:.3f} ("
+            + f"cpu: {pred_cpu[min_idx]:.3f}, "
+            + f"mem: {pred_mem[min_idx]:.3f})")
         return node
 
 def scheduler(pod_name, node, namespace="default"):
@@ -129,26 +175,33 @@ def scheduler(pod_name, node, namespace="default"):
     meta.name = pod_name
     body = client.V1Binding(target=target)
     body.metadata = meta
-    return v1.create_namespaced_binding(namespace, body, _preload_content=False)
+    return v1.create_namespaced_binding(
+        namespace,
+        body,
+        _preload_content=False
+    )
 
 def main():
-    print("Custom-Scheduler: {}: Starting custom scheduler...".format(get_timestamp()))
+    p("Starting custom scheduler...")
     w = watch.Watch()
     for event in w.stream(v1.list_namespaced_pod, "default"):
-        if event['object'].status.phase == "Pending" and event['object'].spec.scheduler_name == SCHEDULER_NAME:
-            if event['object'].spec.node_name:
-                print(f"Custom-Scheduler: Pod already bound to {event['object'].spec.node_name}")
+        pending = event['object'].status.phase == "Pending"
+        this_scheduler = event['object'].spec.scheduler_name == SCHEDULER_NAME
+        existing_node_name = event['object'].spec.node_name
+        if pending and this_scheduler:
+            if existing_node_name:
+                p(f"Pod already bound to {existing_node_name}")
                 continue
             try:
                 pod_name = event['object'].metadata.name
                 data = get_data()
-                print(f"Custom-Scheduler: data: {data}")
+                p(f"data: {data}")
                 node = predict_node() or random.choice(nodes_available())
                 res = scheduler(pod_name, node)
-                print("Custom-Scheduler: {}: Scheduling result: {}".format(get_timestamp(), res.status))
-                print("Custom-Scheduler: {}: Scheduled {} to {}".format(get_timestamp(), pod_name, node))
+                p(f"Scheduling result: {res.status}")
+                p(f"Scheduled {pod_name} to {node}")
             except client.rest.ApiException as e:
-                print("Custom-Scheduler: {}: An exception occurred: {}".format(get_timestamp(), json.loads(e.body)['message']))
+                p("An exception occurred: {json.loads(e.body)['message']}")
 
 
 if __name__ == '__main__':
