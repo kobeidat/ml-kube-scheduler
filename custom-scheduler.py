@@ -24,6 +24,7 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 SCHEDULER_NAME = "my-scheduler"
 PROMETHEUS_URL = "http://prometheus-server.default.svc.cluster.local"
 VALUE_MAX = 1
+DEFAULT_ALPHA = 0.7
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -143,7 +144,7 @@ def model_updater():
             input_history.append(input_vector)
         sleep(UPDATE_INTERVAL)
 
-def predict_node():
+def predict_node(alpha):
     with lock:
         while len(input_history) < SEQ_LENGTH:
             p("Waiting for the inputs to gather...")
@@ -153,7 +154,6 @@ def predict_node():
         pred_vector = model(X).detach().cpu().numpy().squeeze()
         pred_cpu = pred_vector[:MAX_NODES]
         pred_mem = pred_vector[MAX_NODES:]
-        alpha = 0.7
         scores = alpha * pred_cpu + (1 - alpha) * pred_mem
         min_idx = np.argmin(scores)
         p(f"pred {pred_vector}")
@@ -184,6 +184,7 @@ def scheduler(pod_name, node, namespace="default"):
 def main():
     p("Starting custom scheduler...")
     w = watch.Watch()
+
     for event in w.stream(v1.list_namespaced_pod, "default"):
         pending = event['object'].status.phase == "Pending"
         this_scheduler = event['object'].spec.scheduler_name == SCHEDULER_NAME
@@ -193,10 +194,18 @@ def main():
                 p(f"Pod already bound to {existing_node_name}")
                 continue
             try:
+                annotations = event['object'].metadata.annotations or {}
+                alpha_str = annotations.get(
+                    f'{SCHEDULER_NAME}/alpha',
+                    str(DEFAULT_ALPHA)
+                )
+                alpha = float(alpha_str) or DEFAULT_ALPHA
+                p(f"Alpha: {alpha}")
                 pod_name = event['object'].metadata.name
+                p(f"Pod: {pod_name}")
                 data = get_data()
                 p(f"data: {data}")
-                node = predict_node() or random.choice(nodes_available())
+                node = predict_node(alpha) or random.choice(nodes_available())
                 res = scheduler(pod_name, node)
                 p(f"Scheduling result: {res.status}")
                 p(f"Scheduled {pod_name} to {node}")
