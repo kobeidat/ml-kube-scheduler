@@ -105,7 +105,6 @@ def model_updater():
                 loss.backward()
                 optimizer.step()
             input_history.append(input_vector)
-        print(f"Custom-Scheduler: input vector: {input_vector}")
         sleep(UPDATE_INTERVAL)
 
 def predict_node():
@@ -137,14 +136,13 @@ def main():
     w = watch.Watch()
     for event in w.stream(v1.list_namespaced_pod, "default"):
         if event['object'].status.phase == "Pending" and event['object'].spec.scheduler_name == SCHEDULER_NAME:
+            if event['object'].spec.node_name:
+                print(f"Custom-Scheduler: Pod already bound to {event['object'].spec.node_name}")
+                continue
             try:
-                print(event['object'].metadata.__dict__)
                 pod_name = event['object'].metadata.name
-                print("...")
                 data = get_data()
-                print("...")
                 print(f"Custom-Scheduler: data: {data}")
-                print("...")
                 node = predict_node() or random.choice(nodes_available())
                 res = scheduler(pod_name, node)
                 print("Custom-Scheduler: {}: Scheduling result: {}".format(get_timestamp(), res.status))
