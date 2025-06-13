@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-import json
 from kubernetes import client, config, watch
 import numpy as np
 import random
 import requests
 import random
-import string
 import threading
 from time import localtime, sleep, strftime
 import torch
@@ -50,7 +48,7 @@ config.load_incluster_config()
 v1 = client.CoreV1Api()
 
 def get_timestamp():
-    return strftime(timestamp_format, localtime())
+    return strftime(TIMESTAMP_FORMAT, localtime())
 
 def query_prometheus(query):
     try:
