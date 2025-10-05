@@ -59,25 +59,14 @@ def query_prometheus(query):
         return []
 
 def query_prometheus_cpu():
-    return query_prometheus("""
-                            1 - (
-                                avg by (node) (
-                                    irate(
-                                        node_cpu_seconds_total{
-                                            mode="idle"
-                                        }[30m]
-                                    )
-                                )
-                            )
-                            """)
+    return query_prometheus(
+        """1 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])))"""
+    )
 
 def query_prometheus_mem():
-    return query_prometheus("""
-                            1 - (
-                                node_memory_MemAvailable_bytes
-                                / node_memory_MemTotal_bytes
-                            )
-                            """)
+    return query_prometheus(
+        "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+    )
 
 def nodes_available():
     ready_nodes = []
