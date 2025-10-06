@@ -3,24 +3,20 @@
 from kubernetes import client, config, watch
 import numpy as np
 import random
-import requests
 import random
 import threading
-from time import localtime, sleep, strftime
+from time import sleep
 import torch
 import torch.nn as nn
 
-def p(msg):
-    print(f"Custom-Scheduler {get_timestamp()}: {msg}")
+from prometheus import query_prometheus_cpu, query_prometheus_mem, log
 
 MAX_NODES = 5
 NUM_FEATURES = MAX_NODES * 2
 SEQ_LENGTH = 5
 PREDICT_HORIZON = 3
 UPDATE_INTERVAL = 5
-TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 SCHEDULER_NAME = "my-scheduler"
-PROMETHEUS_URL = "http://prometheus-server.default.svc.cluster.local"
 VALUE_MAX = 1
 DEFAULT_ALPHA = 0.7
 
@@ -46,27 +42,6 @@ class LSTMModel(nn.Module):
 # Otherwise use load_kube_config
 config.load_incluster_config()
 v1 = client.CoreV1Api()
-
-def get_timestamp():
-    return strftime(TIMESTAMP_FORMAT, localtime())
-
-def query_prometheus(query):
-    try:
-        r = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
-        return r.json().get("data", {}).get("result", [])
-    except Exception as e:
-        p(f"Error querying Prometheus: {e}")
-        return []
-
-def query_prometheus_cpu():
-    return query_prometheus(
-        """1 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[30m])))"""
-    )
-
-def query_prometheus_mem():
-    return query_prometheus(
-        "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
-    )
 
 def nodes_available():
     ready_nodes = []
@@ -138,7 +113,7 @@ def model_updater():
 def predict_node(alpha):
     with lock:
         while len(input_history) < SEQ_LENGTH:
-            p("Waiting for the inputs to gather...")
+            log("Waiting for the inputs to gather...")
             sleep(UPDATE_INTERVAL)
         X = torch.tensor([input_history[-SEQ_LENGTH:]], dtype=torch.float32) \
                  .to(device)
@@ -147,10 +122,10 @@ def predict_node(alpha):
         pred_mem = pred_vector[MAX_NODES:]
         scores = alpha * pred_cpu + (1 - alpha) * pred_mem
         min_idx = np.argmin(scores)
-        p(f"pred {pred_vector}")
-        p(f"scores {scores}")
+        log(f"pred {pred_vector}")
+        log(f"scores {scores}")
         node = reverse_node_id_map.get(min_idx)
-        p(f"Lowest projected average feature: {node} "
+        log(f"Lowest projected average feature: {node} "
             + f"(index {min_idx}) -> "
             + f"{scores[min_idx]:.3f} ("
             + f"cpu: {pred_cpu[min_idx]:.3f}, "
@@ -173,7 +148,7 @@ def scheduler(pod_name, node, namespace="default"):
     )
 
 def main():
-    p("Starting custom scheduler...")
+    log("Starting custom scheduler...")
     w = watch.Watch()
 
     for event in w.stream(v1.list_namespaced_pod, "default"):
@@ -182,7 +157,7 @@ def main():
         existing_node_name = event['object'].spec.node_name
         if pending and this_scheduler:
             if existing_node_name:
-                p(f"Pod already bound to {existing_node_name}")
+                log(f"Pod already bound to {existing_node_name}")
                 continue
             try:
                 annotations = event['object'].metadata.annotations or {}
@@ -191,17 +166,17 @@ def main():
                     str(DEFAULT_ALPHA)
                 )
                 alpha = float(alpha_str) or DEFAULT_ALPHA
-                p(f"Alpha: {alpha}")
+                log(f"Alpha: {alpha}")
                 pod_name = event['object'].metadata.name
-                p(f"Pod: {pod_name}")
+                log(f"Pod: {pod_name}")
                 data = get_data()
-                p(f"data: {data}")
+                log(f"data: {data}")
                 node = predict_node(alpha) or random.choice(nodes_available())
                 res = scheduler(pod_name, node)
-                p(f"Scheduling result: {res.status}")
-                p(f"Scheduled {pod_name} to {node}")
+                log(f"Scheduling result: {res.status}")
+                log(f"Scheduled {pod_name} to {node}")
             except client.rest.ApiException as e:
-                p("An exception occurred: {json.loads(e.body)['message']}")
+                log("An exception occurred: {json.loads(e.body)['message']}")
 
 
 if __name__ == '__main__':

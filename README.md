@@ -1,4 +1,4 @@
-# Kubernetes Scheduler with ML
+# Kubernetes scheduler with ML
 ## How to run
 Prepare Kubernetes environment
 ```
