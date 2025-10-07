@@ -7,16 +7,20 @@ docker build -t my-scheduler:latest .
 minikube image load my-scheduler:latest
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm install prometheus prometheus-community/prometheus
+helm install prometheus prometheus-community/prometheus --set server.persistentVolume.enabled=false
 kubectl apply -f rbac.yaml
 kubectl apply -f deployment.yaml
 ```
 Apply test pod
 ```
-kubectl apply -f test-pod.yaml
+kubectl apply -f pods/cpu-stress-deployment.yaml
 ```
 ## Evaluation
 ```
 kubectl get pods -n kube-system
 kubectl logs -n kube-system <scheduler-name>
+```
+Port forwarding
+```
+kubectl port-forward svc/prometheus-server 9090:80
 ```

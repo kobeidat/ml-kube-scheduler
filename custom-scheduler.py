@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from prometheus import query_prometheus_cpu, query_prometheus_mem, log
 
+
 MAX_NODES = 5
 NUM_FEATURES = MAX_NODES * 2
 SEQ_LENGTH = 5
