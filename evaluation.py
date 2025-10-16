@@ -5,7 +5,7 @@ from time import sleep
 
 
 def cpu_variance():
-    response = query_prometheus_cpu(5)
+    response = query_prometheus_cpu(1)
     cpu_usage = []
 
     for node_data in response:
@@ -13,8 +13,8 @@ def cpu_variance():
 
     cpu_usage = np.array(cpu_usage) * 100
     var = np.var(cpu_usage)
-    print(cpu_usage)
-    print(var)
+    print("CPU usage: " + np.round(cpu_usage, 4))
+    print("CPU variance: "+ np.round(var, 4))
 
 def evaluate():
     print("Before deployment:")
@@ -30,3 +30,8 @@ def evaluate():
 
 config.load_kube_config()
 client = client.ApiClient()
+
+# do zrobienia:
+# metryki do ewaluacji (np wariancja RAM i inne)
+# automatyzacja ewaluacji
+# zapisywanie wynikow do pliku
