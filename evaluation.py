@@ -6,13 +6,16 @@ import json
 import pandas as pd
 import sys
 
-# ======================================================= #
+
+# ======================================================== #
 # do zrobienia:
 # wiecej metryk do ewaluacji (np wariancja RAM i inne)
 # automatyzacja ewaluacji
 # zapisywanie wynikow do pliku
 # tworzenie wykresow
-# ======================================================= #
+# dodać ustawianie schedulera
+# ======================================================== #
+
 
 EVALS = 4 # number of evaluation points
 INTERVAL = 1 # seconds
@@ -36,15 +39,15 @@ def evaluate(deployment, metric):
     if metric not in metrics:
         raise ValueError(f"Unknown metric: {metric}")
 
-    # config.load_kube_config()
-    # cli = client.ApiClient()
+    config.load_kube_config()
+    cli = client.ApiClient()
 
     values = []
     values.append(metrics[metric]())
     print("Before deployment:")
     print(f"CPU variance: {np.round(values[-1], 4)}")
 
-    # utils.create_from_yaml(cli, deployment)
+    utils.create_from_yaml(cli, deployment)
     values.append(metrics[metric]())
     print("After deployment:")
     print(f"CPU variance: {np.round(values[-1], 4)}")

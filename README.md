@@ -18,6 +18,9 @@ kubectl apply -f pods/cpu-stress-deployment.yaml
 ```
 python evaluation.py <deployment_path> [metric]
 ```
+Alowed metrics:
+* `cpu_var` - CPU variance
+* `test` - metrics for testing (random numbers)
 Useful commands
 ```
 kubectl get pods -n kube-system
