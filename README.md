@@ -1,4 +1,5 @@
 # Kubernetes scheduler with ML
+A customizable Kubernetes scheduler with usage of machine learning.
 ## How to run
 Prepare Kubernetes environment
 ```
@@ -8,14 +9,16 @@ minikube image load my-scheduler:latest
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 helm install prometheus prometheus-community/prometheus --set server.persistentVolume.enabled=false
-kubectl apply -f rbac.yaml
-kubectl apply -f deployment.yaml
 ```
 Apply test pod
 ```
 kubectl apply -f pods/cpu-stress-deployment.yaml
 ```
 ## Evaluation
+```
+python evaluation.py <deployment_path> [metric]
+```
+Useful commands
 ```
 kubectl get pods -n kube-system
 kubectl logs -n kube-system <scheduler-name>
