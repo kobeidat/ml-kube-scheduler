@@ -21,16 +21,13 @@ python evaluation.py -deployment <path> [-metric <name>] [-scheduler <name>]
 Allowed metrics:
 * `cpu_var` - CPU variance
 * `test` - metric for testing, random numbers, default
+
 Allowed schedulers:
 * `ml` - our custom scheduler
 * `default` - default Kubernetes scheduler
-
-Useful commands
+# Useful commands
 ```
 kubectl get pods -n kube-system
 kubectl logs -n kube-system <scheduler-name>
-```
-Port forwarding
-```
 kubectl port-forward svc/prometheus-server 9090:80
 ```
