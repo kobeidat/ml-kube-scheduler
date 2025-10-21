@@ -16,11 +16,15 @@ kubectl apply -f pods/cpu-stress-deployment.yaml
 ```
 ## Evaluation
 ```
-python evaluation.py <deployment_path> [metric]
+python evaluation.py -deployment <path> [-metric <name>] [-scheduler <name>]
 ```
-Alowed metrics:
+Allowed metrics:
 * `cpu_var` - CPU variance
-* `test` - metrics for testing (random numbers)
+* `test` - metric for testing, random numbers, default
+Allowed schedulers:
+* `ml` - our custom scheduler
+* `default` - default Kubernetes scheduler
+
 Useful commands
 ```
 kubectl get pods -n kube-system
