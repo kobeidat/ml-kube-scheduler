@@ -7,19 +7,16 @@ from time import sleep
 import json
 import yaml
 import argparse
-from pathlib import Path
 
 
 # ======================================================== #
 # do zrobienia:
 # wiecej metryk do ewaluacji (np wariancja RAM i inne)
-# opcja porownania od razu kilku schedulerow
-# usprawnienie formatu zapisu danych do pliku
 # ======================================================== #
 
 
 EVALS = 4 # number of evaluation points
-INTERVAL = 1 # seconds
+INTERVAL = 1 # interval in seconds
 
 def cpu_variance():
     response = query_prometheus_cpu(1)
@@ -32,13 +29,12 @@ def cpu_variance():
     var = np.var(cpu_usage)
     return var
 
-def chart(values, metric, scheduler, deploy_path, timestamp: str):
+def save_chart(metric, deploy_path, timestamp):
     metric_titles = {
         "cpu_var": "CPU variance",
         "test": "TEST metric"
     }
 
-    plt.plot(values, label=scheduler)
     plt.title(f"Kubernetes scheduler evaluation by {metric_titles[metric]}")
     plt.xlabel("Evaluations")
     plt.ylabel(metric_titles[metric])
@@ -64,50 +60,74 @@ def evaluate(deploy_path, metric, scheduler):
         raise ValueError(f"Unknown metric: {metric}")
     if scheduler not in schedulers_dict:
         raise ValueError(f"Unknown scheduler: {scheduler}")
-
-    values = []
-    values.append(metrics_dict[metric]())
-    print("Before deployment:")
-    print(f"CPU variance: {np.round(values[-1], 4)}")
-
-    # config.load_kube_config()
-    # cli = client.ApiClient()
+    
     deploy_file = open(deploy_path, "r")
     deployment = yaml.safe_load(deploy_file)
     deploy_file.close()
 
-    deployment["spec"]["template"]["spec"]["schedulerName"] = schedulers_dict[scheduler]
-    # utils.create_from_dict(cli, deployment)
+    config.load_kube_config()
+    cli = client.ApiClient()
+    
+    for curr_scheduler in [scheduler, "default"]:
+        print(f"SCHEDULER: {schedulers_dict[curr_scheduler]}")
+        values = []
 
-    values.append(metrics_dict[metric]())
-    print("After deployment:")
-    print(f"CPU variance: {np.round(values[-1], 4)}")
-
-    for i in range(EVALS):
-        sleep(INTERVAL)
         values.append(metrics_dict[metric]())
-        print(f"After {(i + 1) * INTERVAL} seconds:")
-        print(f"CPU variance: {np.round(values[-1], 4)}")
+        print("Before deployment:")
+        print(f"CPU variance: {np.round(values[-1], 4)}\n")
 
-    log_file = open("logs/eval.json", "a", encoding="utf-8")
-    timestamp = get_timestamp()
-    data = {"timestamp": timestamp, "scheduler": schedulers_dict[scheduler]}
+        deployment_spec = deployment["spec"]["template"]["spec"]
+        deployment_spec["schedulerName"] = schedulers_dict[curr_scheduler]
+        utils.create_from_dict(cli, deployment)
+        print("Creating deployment...", end="", flush=True)
+        sleep(2)
+        print("\nDeployment created\n")
 
-    for i in range(EVALS + 2):
-        data[f"val{i}"] = values[i]
+        values.append(metrics_dict[metric]())
+        print("After deployment:")
+        print(f"CPU variance: {np.round(values[-1], 4)}\n")
 
-    log_file.write(json.dumps(data, ensure_ascii=False) + "\n")
-    log_file.close()
-    chart(values, metric, schedulers_dict[scheduler], deploy_path, timestamp)
+        for i in range(EVALS):
+            sleep(INTERVAL)
+            values.append(metrics_dict[metric]())
+            print(f"After {(i + 1) * INTERVAL} seconds:")
+            print(f"CPU variance: {np.round(values[-1], 4)}\n")
+        
+        pod_name = deployment["metadata"]["name"]
+        pod_namespace = deployment["metadata"].get("namespace", "default")
+        apps_v1 = client.AppsV1Api(cli)
+        apps_v1.delete_namespaced_deployment(pod_name, pod_namespace)
+        print("Deleting deployment...", end="", flush=True)
+        sleep(10)
+        print("\nDeployment deleted\n")
+
+        log_file = open("logs/eval.json", "a", encoding="utf-8")
+        timestamp = get_timestamp()
+        data = {
+            "timestamp": timestamp,
+            "scheduler": schedulers_dict[curr_scheduler]
+        }
+
+        for i in range(EVALS + 2):
+            data[f"val{i}"] = values[i]
+
+        log_file.write(json.dumps(data, ensure_ascii=False) + "\n")
+        log_file.close()
+        plt.plot(values, label=schedulers_dict[curr_scheduler])
+
+    save_chart(metric, deploy_path, timestamp)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-deployment", required=True)
+    parser.add_argument("-scheduler", default="ml")
     parser.add_argument("-metric", default="test")
-    parser.add_argument("-scheduler", default="default")
     args = parser.parse_args()
-    
+
+    if args.scheduler == "default":
+        parser.error("Provide scheduler to compare it with the default one")
+
     evaluate(args.deployment, args.metric, args.scheduler)
     df = pd.read_json("logs/eval.json", lines=True)
     print(df)
