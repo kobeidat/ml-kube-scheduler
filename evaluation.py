@@ -1,5 +1,5 @@
 from kubernetes import config, client, utils
-from prometheus import query_prometheus_cpu, get_timestamp
+from prometheus import query_prometheus_cpu, query_prometheus_mem, get_timestamp
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,14 +9,14 @@ import yaml
 import argparse
 
 
-# ======================================================== #
+# ============================================================ #
 # do zrobienia:
-# wiecej metryk do ewaluacji (np wariancja RAM i inne)
-# ======================================================== #
+# wiecej metryk np. pending time, sezonowosc obciazen, koszty
+# ============================================================ #
 
 
-EVALS = 4 # number of evaluation points
-INTERVAL = 1 # interval in seconds
+EVALS = 4
+INTERVAL = 1
 
 def cpu_variance():
     response = query_prometheus_cpu(1)
@@ -29,9 +29,24 @@ def cpu_variance():
     var = np.var(cpu_usage)
     return var
 
+def mem_variance():
+    response = query_prometheus_mem()
+    mem_usage = []
+
+    for node_data in response:
+        mem_usage.append(float(node_data["value"][1]))
+    
+    mem_usage = np.array(mem_usage) * 100
+    var = np.var(mem_usage)
+    return var
+
+def latency():
+    pass
+
 def save_chart(metric, deploy_path, timestamp):
     metric_titles = {
         "cpu_var": "CPU variance",
+        "mem_var": "Memory variance",
         "test": "TEST metric"
     }
 
@@ -49,6 +64,7 @@ def save_chart(metric, deploy_path, timestamp):
 def evaluate(deploy_path, metric, scheduler):
     metrics_dict = {
         "cpu_var": cpu_variance,
+        "mem_var": mem_variance,
         "test": np.random.uniform
     }
     schedulers_dict = {

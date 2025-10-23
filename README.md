@@ -23,6 +23,7 @@ python evaluation.py -deployment <path> [-scheduler <name>] [-metric <name>]
 ```
 Allowed metrics:
 * `cpu_var` - CPU variance
+* `mem_var` - memory variance
 * `test` - metric for testing, random numbers, default
 
 Allowed schedulers:
