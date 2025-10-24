@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: cpu-stress
 spec:
+  schedulerName: my-scheduler
   replicas: 5
   selector:
     matchLabels:

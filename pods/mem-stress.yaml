@@ -3,6 +3,7 @@ kind: Pod
 metadata:
   name: cpu-stress
 spec:
+  schedulerName: my-scheduler
   containers:
   - name: stress
     image: polinux/stress
