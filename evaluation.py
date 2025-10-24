@@ -9,10 +9,16 @@ import yaml
 import argparse
 
 
-# ============================================================ #
+# =================================================================== #
 # do zrobienia:
-# wiecej metryk np. pending time, sezonowosc obciazen, koszty
-# ============================================================ #
+# wiecej metryk np. latency pending time, sezonowosc obciazen, koszty
+# ------------------------------------------------------------------- #
+# wiecej roznych yaml odpalanych w jednym evaluation
+# przetestowac napisane deploymenty
+# opcja wylaczenia wykresow
+# opcja puszczenia kilku roznych testow naraz
+# wiecej scenariuszy testowych
+# =================================================================== #
 
 
 EVALS = 4
@@ -39,9 +45,6 @@ def mem_variance():
     mem_usage = np.array(mem_usage) * 100
     var = np.var(mem_usage)
     return var
-
-def latency():
-    pass
 
 def save_chart(metric, deploy_path, timestamp):
     metric_titles = {

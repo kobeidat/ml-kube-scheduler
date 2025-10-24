@@ -11,6 +11,8 @@ if repository not added
 ```
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
+```
+```
 helm install prometheus prometheus-community/prometheus --set server.persistentVolume.enabled=false
 ```
 Apply test pod
