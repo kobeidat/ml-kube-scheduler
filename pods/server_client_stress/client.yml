@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  labels:
+    role: client
+  annotations:
+    my-scheduler/alpha: "0.5"
+spec:
+  schedulerName: my-scheduler
+  containers:
+  - name: client
+    image: busybox
+    command: ["sh", "-c"]
+    args: ["while true; do wget -qO- http://consumer:8080; sleep 0.5; done"]
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"

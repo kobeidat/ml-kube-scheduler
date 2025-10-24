@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: server
+  labels:
+    role: server
+  annotations:
+    my-scheduler/alpha: "0.6"
+spec:
+  schedulerName: my-scheduler
+  containers:
+  - name: server
+    image: hashicorp/http-echo
+    args: ["-text=ok"]
+    ports:
+    - containerPort: 8080
+    resources:
+      requests:
+        cpu: "400m"
