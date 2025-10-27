@@ -13,9 +13,7 @@ import argparse
 # do zrobienia:
 # wiecej metryk np. latency pending time, sezonowosc obciazen, koszty
 # ------------------------------------------------------------------- #
-# wiecej roznych yaml odpalanych w jednym evaluation
 # przetestowac napisane deploymenty
-# opcja wylaczenia wykresow
 # opcja puszczenia kilku roznych testow naraz
 # wiecej scenariuszy testowych
 # =================================================================== #
@@ -46,7 +44,7 @@ def mem_variance():
     var = np.var(mem_usage)
     return var
 
-def save_chart(metric, deploy_path, timestamp):
+def save_graph(metric, deploy_path, timestamp):
     metric_titles = {
         "cpu_var": "CPU variance",
         "mem_var": "Memory variance",
@@ -64,7 +62,7 @@ def save_chart(metric, deploy_path, timestamp):
     timestamp = timestamp.replace(" ", "_")
     plt.savefig(f"logs/{pod_name}-{timestamp}.png")
 
-def evaluate(deploy_path, metric, scheduler):
+def evaluate(pod_paths, metric, scheduler, graph):
     metrics_dict = {
         "cpu_var": cpu_variance,
         "mem_var": mem_variance,
@@ -80,30 +78,33 @@ def evaluate(deploy_path, metric, scheduler):
     if scheduler not in schedulers_dict:
         raise ValueError(f"Unknown scheduler: {scheduler}")
     
-    deploy_file = open(deploy_path, "r")
-    deployment = yaml.safe_load(deploy_file)
-    deploy_file.close()
+    pods = []
+    for path in pod_paths:
+        pod_file = open(path, "r")
+        pods.append(yaml.safe_load(pod_file))
+        pod_file.close()
 
     config.load_kube_config()
-    cli = client.ApiClient()
+    v1 = client.CoreV1Api()
     
     for curr_scheduler in [scheduler, "default"]:
-        print(f"SCHEDULER: {schedulers_dict[curr_scheduler]}")
+        print(f"\nSCHEDULER: {schedulers_dict[curr_scheduler]}")
         values = []
 
         values.append(metrics_dict[metric]())
-        print("Before deployment:")
+        print("Before pods:")
         print(f"CPU variance: {np.round(values[-1], 4)}\n")
 
-        deployment_spec = deployment["spec"]["template"]["spec"]
-        deployment_spec["schedulerName"] = schedulers_dict[curr_scheduler]
-        utils.create_from_dict(cli, deployment)
-        print("Creating deployment...", end="", flush=True)
-        sleep(2)
-        print("\nDeployment created\n")
+        for pod in pods:
+            pod["spec"]["schedulerName"] = schedulers_dict[curr_scheduler]
+            pod_namespace = pod["metadata"].get("namespace", "default")
+            v1.create_namespaced_pod(pod_namespace, pod)
+            print("Creating pod...", end="", flush=True)
+            sleep(2)
+            print("\nPod created")
 
         values.append(metrics_dict[metric]())
-        print("After deployment:")
+        print("\nAfter pods:")
         print(f"CPU variance: {np.round(values[-1], 4)}\n")
 
         for i in range(EVALS):
@@ -112,13 +113,13 @@ def evaluate(deploy_path, metric, scheduler):
             print(f"After {(i + 1) * INTERVAL} seconds:")
             print(f"CPU variance: {np.round(values[-1], 4)}\n")
         
-        pod_name = deployment["metadata"]["name"]
-        pod_namespace = deployment["metadata"].get("namespace", "default")
-        apps_v1 = client.AppsV1Api(cli)
-        apps_v1.delete_namespaced_deployment(pod_name, pod_namespace)
-        print("Deleting deployment...", end="", flush=True)
-        sleep(10)
-        print("\nDeployment deleted\n")
+        for pod in pods:
+            pod_name = pod["metadata"]["name"]
+            pod_namespace = pod["metadata"].get("namespace", "default")
+            v1.delete_namespaced_pod(pod_name, pod_namespace)
+            print("Deleting pods...", end="", flush=True)
+            sleep(10)
+            print("\nPods deleted")
 
         log_file = open("logs/eval.json", "a", encoding="utf-8")
         timestamp = get_timestamp()
@@ -134,19 +135,21 @@ def evaluate(deploy_path, metric, scheduler):
         log_file.close()
         plt.plot(values, label=schedulers_dict[curr_scheduler])
 
-    save_chart(metric, deploy_path, timestamp)
+    if graph:
+        save_graph(metric, pod_paths[-1], timestamp)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-deployment", required=True)
+    parser.add_argument("-pods", nargs="+", required=True)
     parser.add_argument("-scheduler", default="ml")
     parser.add_argument("-metric", default="test")
+    parser.add_argument("-graph", action="store_true")
     args = parser.parse_args()
 
     if args.scheduler == "default":
         parser.error("Provide scheduler to compare it with the default one")
 
-    evaluate(args.deployment, args.metric, args.scheduler)
+    evaluate(args.pods, args.metric, args.scheduler, args.graph)
     df = pd.read_json("logs/eval.json", lines=True)
     print(df)
