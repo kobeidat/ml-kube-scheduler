@@ -1,5 +1,6 @@
-from kubernetes import config, client, utils
-from prometheus import query_prometheus_cpu, query_prometheus_mem, get_timestamp
+from kubernetes import config, client
+from prometheus import query_prometheus_cpu, query_prometheus_mem
+from prometheus import get_timestamp, PROM_URL_EVAL
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,10 +21,10 @@ import argparse
 
 
 EVALS = 4
-INTERVAL = 1
+INTERVAL = 2 # 10
 
 def cpu_variance():
-    response = query_prometheus_cpu(1)
+    response = query_prometheus_cpu(3, PROM_URL_EVAL)
     cpu_usage = []
 
     for node_data in response:
@@ -34,7 +35,7 @@ def cpu_variance():
     return var
 
 def mem_variance():
-    response = query_prometheus_mem()
+    response = query_prometheus_mem(PROM_URL_EVAL)
     mem_usage = []
 
     for node_data in response:
@@ -69,7 +70,7 @@ def evaluate(pod_paths, metric, scheduler, graph):
         "test": np.random.uniform
     }
     schedulers_dict = {
-        "ml": "custom-scheduler",
+        "ml": "my-scheduler",
         "default": "default-scheduler"
     }
 
