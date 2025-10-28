@@ -1,6 +1,8 @@
-from kubernetes import config, client
+from kubernetes import client, config
 from prometheus import query_prometheus_cpu, query_prometheus_mem
-from prometheus import get_timestamp, PROM_URL_EVAL
+from prometheus import get_timestamp
+from config import EVALS, INTERVAL, PROM_URL_EVAL
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,16 +14,13 @@ import argparse
 
 # =================================================================== #
 # do zrobienia:
-# wiecej metryk np. latency pending time, sezonowosc obciazen, koszty
+# wiecej metryk np. latency, pending time, sezonowosc obciazen, koszty
 # ------------------------------------------------------------------- #
-# przetestowac napisane deploymenty
+# przetestowac pody client-server
 # opcja puszczenia kilku roznych testow naraz
 # wiecej scenariuszy testowych
 # =================================================================== #
 
-
-EVALS = 4
-INTERVAL = 2 # 10
 
 def cpu_variance():
     response = query_prometheus_cpu(3, PROM_URL_EVAL)

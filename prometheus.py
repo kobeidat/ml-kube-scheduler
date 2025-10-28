@@ -1,10 +1,7 @@
 import requests
 from time import strftime, localtime
+from config import PROM_URL, TIMESTAMP_FORMAT
 
-
-PROM_URL = "http://prometheus-server.default.svc.cluster.local"
-PROM_URL_EVAL = "http://localhost:9090"
-TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 def get_timestamp():
     return strftime(TIMESTAMP_FORMAT, localtime())
