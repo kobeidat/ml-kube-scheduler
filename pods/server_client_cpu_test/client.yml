@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  labels:
+    role: client
+spec:
+  schedulerName: my-scheduler
+  containers:
+  - name: client
+    image: python:3.9-slim
+    command: ["sh", "-c"]
+    args:
+      - |
+        pip install requests >/dev/null 2>&1 && \
+        cat > client.py <<'EOF'
+        import time, requests
+
+        def cpu_burn(duration=2):
+            start = time.time()
+            while time.time() - start < duration:
+                pass
+
+        while True:
+            cpu_burn(2)
+
+            try:
+                requests.get("http://consumer:8080", timeout=5)
+            except Exception:
+                pass
+        EOF
+        python client.py
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "64Mi"
