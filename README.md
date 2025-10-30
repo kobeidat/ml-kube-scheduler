@@ -37,3 +37,16 @@ kubectl get pods -n kube-system
 kubectl logs -n kube-system <scheduler-name>
 kubectl port-forward svc/prometheus-server 9090:80
 ```
+## TODO
+- [x] motywacje do rozwiązania jako początek pierwszego rozdziału
+- [x] opis problemu pierwszy rozdział szczegółowo
+- [x] user stories do wymagań w tabeli
+- [x] MoSCoW w tabeli obok user stories
+- [ ] wykorzystane technologie w 1 rozdziale
+- [ ] aktorzy do 1 rozdziału
+- [ ] dalsza część po wstępie bardziej szczegółowa
+- [ ] do każdego punktu wstęp
+- [ ] 4-5 linijek na każdy punkt
+- [ ] rysunki, schematy, diagramy, screeny, wygląd architektury powiązań, przepływu informacji
+- [ ] opis do algorytmów
+- [ ] planowane poprawki mogą zostać zmienione na wykonane poprawki

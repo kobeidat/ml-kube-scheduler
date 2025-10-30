@@ -1,6 +1,7 @@
 "Project configuration file."
 
 # scheduler
+LR = 0.01
 MAX_NODES = 5
 NUM_FEATURES = MAX_NODES * 2
 SEQ_LENGTH = 5

@@ -14,8 +14,6 @@ import argparse
 
 # =================================================================== #
 # do zrobienia:
-# wiecej metryk np. latency, pending time, sezonowosc obciazen, koszty
-# ------------------------------------------------------------------- #
 # przetestowac pody client-server
 # opcja puszczenia kilku roznych testow naraz
 # wiecej scenariuszy testowych

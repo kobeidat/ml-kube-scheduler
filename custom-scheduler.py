@@ -50,7 +50,7 @@ node_id_map = {}
 reverse_node_id_map = {}
 input_history = []
 model = LSTMModel(config.NUM_FEATURES).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=config.LR)
 criterion = nn.MSELoss()
 lock = threading.Lock()
 

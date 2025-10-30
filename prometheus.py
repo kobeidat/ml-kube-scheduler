@@ -1,3 +1,5 @@
+"Connection with Prometheus system."
+
 import requests
 from time import strftime, localtime
 from config import PROM_URL, TIMESTAMP_FORMAT
