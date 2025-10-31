@@ -14,7 +14,6 @@ import argparse
 
 # =================================================================== #
 # do zrobienia:
-# przetestowac pody client-server
 # opcja puszczenia kilku roznych testow naraz
 # wiecej scenariuszy testowych
 # =================================================================== #
@@ -22,6 +21,9 @@ import argparse
 
 def cpu_variance():
     response = query_prometheus_cpu(3, PROM_URL_EVAL)
+    if not response:
+        raise ConnectionError("Connection with Prometheus error")
+
     cpu_usage = []
 
     for node_data in response:
@@ -33,6 +35,9 @@ def cpu_variance():
 
 def mem_variance():
     response = query_prometheus_mem(PROM_URL_EVAL)
+    if not response:
+        raise ConnectionError("Connection with Prometheus error")
+    
     mem_usage = []
 
     for node_data in response:
