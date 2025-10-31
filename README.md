@@ -22,7 +22,7 @@ kubectl apply -f pods/cpu-stress-deployment.yaml
 ## Evaluation
 Compare custom Kubernetes scheduler with the default one.
 ```
-python evaluation.py -pods <path> [<path> ...] [-scheduler <name>] [-metric <name>]
+python evaluation.py -pods <path> [<path> ...] [-scheduler <name>] [-metric <name>] [-graph]
 ```
 Allowed metrics:
 * `cpu_var` - CPU variance

@@ -18,4 +18,4 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # evaluation
 EVALS = 4
-INTERVAL = 2 # 10
+INTERVAL = 3 # 10
