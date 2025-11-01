@@ -60,7 +60,7 @@ def get_data():
     mem_data = query_prometheus_mem()
     return {
         nodes_list[i]: [
-            float(cpu_data[i]['value'][1]), 
+            float(cpu_data[i]['value'][1]),
             float(mem_data[i]['value'][1])
         ]
         for i in range(len(nodes_list))
