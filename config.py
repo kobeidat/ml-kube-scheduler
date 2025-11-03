@@ -18,4 +18,5 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # evaluation
 EVALS = 4
-INTERVAL = 3 # 10
+INTERVAL = 4 # 10
+REVERSE = False

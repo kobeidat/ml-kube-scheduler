@@ -1,7 +1,8 @@
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 from prometheus import query_prometheus_cpu, query_prometheus_mem
 from prometheus import get_timestamp
-from config import EVALS, INTERVAL, PROM_URL_EVAL
+from config import EVALS, INTERVAL, PROM_URL_EVAL, REVERSE
 
 import numpy as np
 import pandas as pd
@@ -90,7 +91,11 @@ def evaluate(pod_paths, metric, scheduler, graph):
     config.load_kube_config()
     v1 = client.CoreV1Api()
     
-    for curr_scheduler in [scheduler, "default"]:
+    schedulers_list = [scheduler, "default"]
+    if REVERSE:
+        schedulers_list.reverse()
+
+    for curr_scheduler in schedulers_list:
         print(f"\nSCHEDULER: {schedulers_dict[curr_scheduler]}")
         values = []
 
@@ -121,7 +126,17 @@ def evaluate(pod_paths, metric, scheduler, graph):
             pod_namespace = pod["metadata"].get("namespace", "default")
             v1.delete_namespaced_pod(pod_name, pod_namespace)
             print("Deleting pods...", end="", flush=True)
-            sleep(10)
+
+            while True:
+                try:
+                    v1.read_namespaced_pod(pod_name, pod_namespace)
+                    sleep(1)
+                except ApiException as e:
+                    if e.status == 404:
+                        break
+                    else:
+                        raise
+
             print("\nPods deleted")
 
         log_file = open("logs/eval.json", "a", encoding="utf-8")

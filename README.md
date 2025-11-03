@@ -47,6 +47,6 @@ kubectl port-forward svc/prometheus-server 9090:80
 - [ ] dalsza część po wstępie bardziej szczegółowa
 - [ ] do każdego punktu wstęp
 - [ ] 4-5 linijek na każdy punkt
-- [ ] rysunki, schematy, diagramy, screeny, wygląd architektury powiązań, przepływu informacji
+- [ ] !!! rysunki, schematy, diagramy, screeny, wygląd architektury powiązań, przepływu informacji !!!
 - [ ] opis do algorytmów
 - [ ] planowane poprawki mogą zostać zmienione na wykonane poprawki
