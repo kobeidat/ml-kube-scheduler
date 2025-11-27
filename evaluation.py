@@ -13,13 +13,6 @@ import yaml
 import argparse
 
 
-# =================================================================== #
-# do zrobienia:
-# opcja puszczenia kilku roznych testow naraz
-# wiecej scenariuszy testowych
-# =================================================================== #
-
-
 def cpu_variance():
     response = query_prometheus_cpu(3, PROM_URL_EVAL)
     if not response:

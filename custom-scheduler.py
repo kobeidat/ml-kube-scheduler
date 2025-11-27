@@ -11,25 +11,10 @@ import torch.nn as nn
 
 from prometheus import query_prometheus_cpu, query_prometheus_mem, log
 import config
+from model import LSTMModel
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size=50, num_layers=1):
-        super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(
-            input_size,
-            hidden_size,
-            num_layers,
-            batch_first=True
-        )
-        self.fc = nn.Linear(hidden_size, input_size)
-
-    def forward(self, x):
-        x, _ = self.lstm(x)
-        x = self.fc(x)
-        return x[:, -1, :]
 
 # Use load_incluster_config when deploying scheduler from within the cluster.
 # Otherwise use load_kube_config
