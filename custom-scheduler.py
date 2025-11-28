@@ -43,13 +43,37 @@ def get_data():
     nodes_list = list(set(nodes_available()))
     cpu_data = query_prometheus_cpu()
     mem_data = query_prometheus_mem()
-    return {
-        nodes_list[i]: [
-            float(cpu_data[i]['value'][1]),
-            float(mem_data[i]['value'][1])
-        ]
-        for i in range(len(nodes_list))
-    }
+
+    cpu_by_node = {}
+    mem_by_node = {}
+
+    for entry in cpu_data:
+        metric = entry.get("metric", {})
+        node_name = metric.get("node")
+        if node_name:
+            cpu_by_node[node_name] = float(entry["value"][1])
+    
+    for entry in mem_data:
+        metric = entry.get("metric", {})
+        node_name = metric.get("node")
+        if node_name:
+            mem_by_node[node_name] = float(entry["value"][1])
+    
+    result = {}
+    for node in nodes_list:
+        result[node] = [cpu_by_node.get(node, 0), mem_by_node.get(node, 0)]
+    
+    return result
+
+    # critical bug improvement
+    
+    # return {
+    #     nodes_list[i]: [
+    #         float(cpu_data[i]['value'][1]),
+    #         float(mem_data[i]['value'][1])
+    #     ]
+    #     for i in range(len(nodes_list))
+    # }
 
 def assign_features(data):
     for k in data.keys():
@@ -77,10 +101,8 @@ def model_updater():
             input_vector = assign_features(data)
             if len(input_history) > config.SEQ_LENGTH:
                 input_history = input_history[-config.SEQ_LENGTH:]
-                X = torch.tensor([input_history], dtype=torch.float32) \
-                         .to(device)
-                y = torch.tensor([input_vector], dtype=torch.float32) \
-                         .to(device)
+                X = torch.tensor([input_history], dtype=torch.float32).to(device)
+                y = torch.tensor([input_vector], dtype=torch.float32).to(device)
                 optimizer.zero_grad()
                 loss = criterion(model(X), y)
                 loss.backward()
