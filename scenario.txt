@@ -1,0 +1,10 @@
+1. uruchamiam Minikube
+2. pokazuję node'y (kubectl get nodes)
+3. odpalam wszystko do Helma włącznie
+4. pokazuję pody że jest Prometheus (kubectl get pods)
+5. odpalam deployment schedulera
+6. pokazuję pody kube-system że jest scheduler (kubectl get pods -n kube-system)
+7. odpalam poda stress
+8. pokazuję pody że jest stress Running (kubectl get pods)
+9. pokazuję logi schedulera że działa (kubectl logs -n kube-system my-scheduler-<id>)
+10. KONIEC
