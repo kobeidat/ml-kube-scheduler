@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-scheduler
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-scheduler
+  template:
+    metadata:
+      labels:
+        app: my-scheduler
+    spec:
+      containers:
+      - name: my-scheduler
+        image: my-scheduler:latest
+        imagePullPolicy: IfNotPresent

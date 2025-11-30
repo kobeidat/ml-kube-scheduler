@@ -17,7 +17,8 @@ helm install prometheus prometheus-community/prometheus --set server.persistentV
 ```
 Apply test pod
 ```
-kubectl apply -f pods/cpu-stress-deployment.yaml
+kubectl apply -f scheduler-deployment.yaml
+kubectl apply -f pods/cpu-stress.yaml
 ```
 ## Evaluation
 Compare custom Kubernetes scheduler with the default one.
@@ -33,8 +34,8 @@ Allowed schedulers:
 * `ml` - our custom scheduler, default
 ### Useful commands
 ```
-kubectl get pods -n kube-system
-kubectl logs -n kube-system <scheduler-name>
+kubectl get pods [-n kube-system]
+kubectl logs -n kube-system my-scheduler-<id>
 kubectl port-forward svc/prometheus-server 9090:80
 ```
 ## TODO
